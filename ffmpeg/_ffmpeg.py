@@ -1,9 +1,8 @@
 from __future__ import unicode_literals
-
-from past.builtins import basestring
-from ._utils import basestring
+from typing import Any, AnyStr, Union
 
 from .nodes import (
+    OutputStream,
     filter_operator,
     GlobalNode,
     InputNode,
@@ -13,7 +12,7 @@ from .nodes import (
 )
 
 
-def input(filename, **kwargs):
+def input(filename: str, **kwargs: Any):
     """Input file URL (ffmpeg ``-i`` option)
 
     Any supplied kwargs are passed to ffmpeg verbatim (e.g. ``t=20``,
@@ -23,12 +22,12 @@ def input(filename, **kwargs):
 
     Official documentation: `Main options <https://ffmpeg.org/ffmpeg.html#Main-options>`__
     """
-    kwargs['filename'] = filename
-    fmt = kwargs.pop('f', None)
+    kwargs["filename"] = filename
+    fmt = kwargs.pop("f", None)
     if fmt:
-        if 'format' in kwargs:
+        if "format" in kwargs:
             raise ValueError("Can't specify both `format` and `f` kwargs")
-        kwargs['format'] = fmt
+        kwargs["format"] = fmt
     return InputNode(input.__name__, kwargs=kwargs).stream()
 
 
@@ -44,7 +43,7 @@ def overwrite_output(stream):
 
     Official documentation: `Main options <https://ffmpeg.org/ffmpeg.html#Main-options>`__
     """
-    return GlobalNode(stream, overwrite_output.__name__, ['-y']).stream()
+    return GlobalNode(stream, overwrite_output.__name__, ["-y"]).stream()
 
 
 @output_operator()
@@ -54,7 +53,7 @@ def merge_outputs(*streams):
 
 
 @filter_operator()
-def output(*streams_and_filename, **kwargs):
+def output(*streams_and_filename: Union[OutputStream, AnyStr], **kwargs: Any):
     """Output file URL
 
     Syntax:
@@ -77,19 +76,21 @@ def output(*streams_and_filename, **kwargs):
 
     Official documentation: `Synopsis <https://ffmpeg.org/ffmpeg.html#Synopsis>`__
     """
-    streams_and_filename = list(streams_and_filename)
-    if 'filename' not in kwargs:
-        if not isinstance(streams_and_filename[-1], basestring):
-            raise ValueError('A filename must be provided')
-        kwargs['filename'] = streams_and_filename.pop(-1)
-    streams = streams_and_filename
+    _streams_and_filename = list(streams_and_filename)
+    if "filename" not in kwargs:
+        if not isinstance(_streams_and_filename[-1], (str, bytes)):
+            raise ValueError("A filename must be provided")
+        kwargs["filename"] = _streams_and_filename.pop(-1)
+    streams: list[OutputStream] = list(
+        filter(lambda x: not isinstance(x, (str, bytes)), _streams_and_filename)  # type: ignore
+    )
 
-    fmt = kwargs.pop('f', None)
+    fmt = kwargs.pop("f", None)
     if fmt:
-        if 'format' in kwargs:
+        if "format" in kwargs:
             raise ValueError("Can't specify both `format` and `f` kwargs")
-        kwargs['format'] = fmt
+        kwargs["format"] = fmt
     return OutputNode(streams, output.__name__, kwargs=kwargs).stream()
 
 
-__all__ = ['input', 'merge_outputs', 'output', 'overwrite_output']
+__all__ = ["input", "merge_outputs", "output", "overwrite_output"]

@@ -2,9 +2,7 @@ from setuptools import setup
 from textwrap import dedent
 
 version = '0.2.0'
-download_url = 'https://github.com/kkroening/ffmpeg-python/archive/v{}.zip'.format(
-    version
-)
+download_url = 'https://github.com/kkroening/ffmpeg-python/archive/v{}.zip'.format(version)
 
 long_description = dedent(
     '''\
@@ -85,14 +83,6 @@ setup(
         'Natural Language :: English',
         'Operating System :: OS Independent',
         'Programming Language :: Python',
-        'Programming Language :: Python :: 2',
-        'Programming Language :: Python :: 2.7',
-        'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.3',
-        'Programming Language :: Python :: 3.4',
-        'Programming Language :: Python :: 3.5',
-        'Programming Language :: Python :: 3.6',
-        'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
         'Programming Language :: Python :: 3.10',

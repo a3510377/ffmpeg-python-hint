@@ -1,6 +1,5 @@
 [tool.black]
-skip-string-normalization = true
-target_version = ['py27']  # TODO: drop Python 2 support (... "Soon").
+line-length = 110
 include = '\.pyi?$'
 exclude = '''
 (

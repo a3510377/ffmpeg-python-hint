@@ -23,9 +23,7 @@ def filter_multi_output(stream_spec, filter_name, *args, **kwargs):
         ffmpeg.concat(split0, split1).output('out.mp4').run()
         ```
     """
-    return FilterNode(
-        stream_spec, filter_name, args=args, kwargs=kwargs, max_inputs=None
-    )
+    return FilterNode(stream_spec, filter_name, args=args, kwargs=kwargs, max_inputs=None)
 
 
 @filter_operator()
@@ -108,7 +106,7 @@ def trim(stream, **kwargs):
 
 
 @filter_operator()
-def overlay(main_parent_node, overlay_parent_node, eof_action='repeat', **kwargs):
+def overlay(main_parent_node, overlay_parent_node, eof_action="repeat", **kwargs):
     """Overlay one video on top of another.
 
     Args:
@@ -156,7 +154,7 @@ def overlay(main_parent_node, overlay_parent_node, eof_action='repeat', **kwargs
 
     Official documentation: `overlay <https://ffmpeg.org/ffmpeg-filters.html#overlay-1>`__
     """
-    kwargs['eof_action'] = eof_action
+    kwargs["eof_action"] = eof_action
     return FilterNode(
         [main_parent_node, overlay_parent_node],
         overlay.__name__,
@@ -197,9 +195,7 @@ def crop(stream, x, y, width, height, **kwargs):
 
     Official documentation: `crop <https://ffmpeg.org/ffmpeg-filters.html#crop>`__
     """
-    return FilterNode(
-        stream, crop.__name__, args=[width, height, x, y], kwargs=kwargs
-    ).stream()
+    return FilterNode(stream, crop.__name__, args=[width, height, x, y], kwargs=kwargs).stream()
 
 
 @filter_operator()
@@ -229,10 +225,8 @@ def drawbox(stream, x, y, width, height, color, thickness=None, **kwargs):
     Official documentation: `drawbox <https://ffmpeg.org/ffmpeg-filters.html#drawbox>`__
     """
     if thickness:
-        kwargs['t'] = thickness
-    return FilterNode(
-        stream, drawbox.__name__, args=[x, y, width, height, color], kwargs=kwargs
-    ).stream()
+        kwargs["t"] = thickness
+    return FilterNode(stream, drawbox.__name__, args=[x, y, width, height, color], kwargs=kwargs).stream()
 
 
 @filter_operator()
@@ -393,12 +387,12 @@ def drawtext(stream, text=None, x=0, y=0, escape_text=True, **kwargs):
     """
     if text is not None:
         if escape_text:
-            text = escape_chars(text, '\\\'%')
-        kwargs['text'] = text
+            text = escape_chars(text, "\\'%")
+        kwargs["text"] = text
     if x != 0:
-        kwargs['x'] = x
+        kwargs["x"] = x
     if y != 0:
-        kwargs['y'] = y
+        kwargs["y"] = y
     return filter(stream, drawtext.__name__, **kwargs)
 
 
@@ -431,16 +425,16 @@ def concat(*streams, **kwargs):
 
     Official documentation: `concat <https://ffmpeg.org/ffmpeg-filters.html#concat>`__
     """
-    video_stream_count = kwargs.get('v', 1)
-    audio_stream_count = kwargs.get('a', 0)
+    video_stream_count = kwargs.get("v", 1)
+    audio_stream_count = kwargs.get("a", 0)
     stream_count = video_stream_count + audio_stream_count
     if len(streams) % stream_count != 0:
         raise ValueError(
-            'Expected concat input streams to have length multiple of {} (v={}, a={}); got {}'.format(
+            "Expected concat input streams to have length multiple of {} (v={}, a={}); got {}".format(
                 stream_count, video_stream_count, audio_stream_count, len(streams)
             )
         )
-    kwargs['n'] = int(len(streams) / stream_count)
+    kwargs["n"] = int(len(streams) / stream_count)
     return FilterNode(streams, concat.__name__, kwargs=kwargs, max_inputs=None).stream()
 
 
@@ -492,19 +486,19 @@ def colorchannelmixer(stream, *args, **kwargs):
 
 
 __all__ = [
-    'colorchannelmixer',
-    'concat',
-    'crop',
-    'drawbox',
-    'drawtext',
-    'filter',
-    'filter_',
-    'filter_multi_output',
-    'hflip',
-    'hue',
-    'overlay',
-    'setpts',
-    'trim',
-    'vflip',
-    'zoompan',
+    "colorchannelmixer",
+    "concat",
+    "crop",
+    "drawbox",
+    "drawtext",
+    "filter",
+    "filter_",
+    "filter_multi_output",
+    "hflip",
+    "hue",
+    "overlay",
+    "setpts",
+    "trim",
+    "vflip",
+    "zoompan",
 ]

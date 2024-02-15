@@ -1,11 +1,11 @@
 from __future__ import unicode_literals
+from abc import ABC, abstractmethod
 
 from ._utils import get_hash, get_hash_int
-from builtins import object
-from collections import namedtuple
+from typing import Any, Dict, NamedTuple, Optional, Sequence
 
 
-class DagNode(object):
+class DagNode(ABC):
     """Node in a directed-acyclic graph (DAG).
 
     Edges:
@@ -50,26 +50,31 @@ class DagNode(object):
         constant.
     """
 
+    @abstractmethod
     def __hash__(self):
         """Return an integer hash of the node."""
         raise NotImplementedError()
 
+    @abstractmethod
     def __eq__(self, other):
         """Compare two nodes; implementations should return True if (and only if)
         hashes match.
         """
         raise NotImplementedError()
 
+    @abstractmethod
     def __repr__(self, other):
         """Return a full string representation of the node."""
         raise NotImplementedError()
 
     @property
+    @abstractmethod
     def short_repr(self):
         """Return a partial/concise representation of the node."""
         raise NotImplementedError()
 
     @property
+    @abstractmethod
     def incoming_edge_map(self):
         """Provides information about all incoming edges that connect to this node.
 
@@ -80,19 +85,15 @@ class DagNode(object):
         raise NotImplementedError()
 
 
-DagEdge = namedtuple(
-    'DagEdge',
-    [
-        'downstream_node',
-        'downstream_label',
-        'upstream_node',
-        'upstream_label',
-        'upstream_selector',
-    ],
-)
+class DagEdge(NamedTuple):
+    downstream_node: "KwargReprNode"
+    downstream_label: str
+    upstream_node: str
+    upstream_label: str
+    upstream_selector: str
 
 
-def get_incoming_edges(downstream_node, incoming_edge_map):
+def get_incoming_edges(downstream_node: "KwargReprNode", incoming_edge_map):
     edges = []
     for downstream_label, upstream_info in list(incoming_edge_map.items()):
         upstream_node, upstream_label, upstream_selector = upstream_info
@@ -129,8 +130,8 @@ class KwargReprNode(DagNode):
     """A DagNode that can be represented as a set of args+kwargs."""
 
     @property
-    def __upstream_hashes(self):
-        hashes = []
+    def __upstream_hashes(self) -> list[int]:
+        hashes: list[int] = []
         for downstream_label, upstream_info in list(self.incoming_edge_map.items()):
             upstream_node, upstream_label, upstream_selector = upstream_info
             hashes += [
@@ -145,42 +146,46 @@ class KwargReprNode(DagNode):
         return hashes
 
     @property
-    def __inner_hash(self):
-        props = {'args': self.args, 'kwargs': self.kwargs}
+    def __inner_hash(self) -> str:
+        props = {"args": self.args, "kwargs": self.kwargs}
         return get_hash(props)
 
-    def __get_hash(self):
+    def __get_hash(self) -> int:
         hashes = self.__upstream_hashes + [self.__inner_hash]
         return get_hash_int(hashes)
 
-    def __init__(self, incoming_edge_map, name, args, kwargs):
+    def __init__(
+        self,
+        incoming_edge_map,
+        name: str,
+        args: Optional[Sequence[Any]] = None,
+        kwargs: Optional[Dict[Any, Any]] = None,
+    ) -> None:
         self.__incoming_edge_map = incoming_edge_map
-        self.name = name
-        self.args = args
-        self.kwargs = kwargs
+        self.name: str = name
+        self.args: Sequence[Any] = list() if args is None else args
+        self.kwargs: Dict[Any, Any] = dict() if kwargs is None else kwargs
         self.__hash = self.__get_hash()
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return self.__hash
 
-    def __eq__(self, other):
+    def __eq__(self, other) -> bool:
         return hash(self) == hash(other)
 
     @property
-    def short_hash(self):
-        return '{:x}'.format(abs(hash(self)))[:12]
+    def short_hash(self) -> str:
+        return f"{abs(hash(self)):x}"[:12]
 
-    def long_repr(self, include_hash=True):
-        formatted_props = ['{!r}'.format(arg) for arg in self.args]
-        formatted_props += [
-            '{}={!r}'.format(key, self.kwargs[key]) for key in sorted(self.kwargs)
-        ]
-        out = '{}({})'.format(self.name, ', '.join(formatted_props))
+    def long_repr(self, include_hash: bool = True) -> str:
+        formatted_props = [f"{arg!r}" for arg in self.args]
+        formatted_props += [f"{key}={self.kwargs[key]!r}" for key in sorted(self.kwargs)]
+        out = f"{self.name}({', '.join(formatted_props)})"
         if include_hash:
-            out += ' <{}>'.format(self.short_hash)
+            out += f" <{self.short_hash}>"
         return out
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return self.long_repr()
 
     @property
@@ -192,7 +197,7 @@ class KwargReprNode(DagNode):
         return self.__incoming_edge_map
 
     @property
-    def short_repr(self):
+    def short_repr(self) -> str:
         return self.name
 
 
@@ -209,14 +214,12 @@ def topo_sort(downstream_nodes):
         downstream_selector=None,
     ):
         if upstream_node in marked_nodes:
-            raise RuntimeError('Graph is not a DAG')
+            raise RuntimeError("Graph is not a DAG")
 
         if downstream_node is not None:
             outgoing_edge_map = outgoing_edge_maps.get(upstream_node, {})
             outgoing_edge_infos = outgoing_edge_map.get(upstream_label, [])
-            outgoing_edge_infos += [
-                (downstream_node, downstream_label, downstream_selector)
-            ]
+            outgoing_edge_infos += [(downstream_node, downstream_label, downstream_selector)]
             outgoing_edge_map[upstream_label] = outgoing_edge_infos
             outgoing_edge_maps[upstream_node] = outgoing_edge_map
 
