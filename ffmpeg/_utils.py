@@ -1,5 +1,4 @@
-from __future__ import unicode_literals
-from builtins import str
+from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any, Dict, List
 import hashlib
@@ -32,16 +31,16 @@ def get_hash_int(item: Any) -> int:
     return int(get_hash(item), base=16)
 
 
-def escape_chars(text: Any, chars: Iterable[str]):
+def escape_chars(text: Any, chars: Iterable[str]) -> str:
     """Helper function to escape uncomfortable characters."""
-    text = str(text)
+    result = str(text)
     chars = list(set(chars))
     if "\\" in chars:
         chars.remove("\\")
         chars.insert(0, "\\")
     for ch in chars:
-        text = text.replace(ch, "\\" + ch)
-    return text
+        result = result.replace(ch, "\\" + ch)
+    return result
 
 
 def convert_kwargs_to_cmd_line_args(kwargs: Dict) -> List[str]:

@@ -1,8 +1,11 @@
-from __future__ import unicode_literals
+from __future__ import annotations
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Sequence
 
 from ._utils import get_hash, get_hash_int
-from typing import Any, Dict, NamedTuple, Optional, Sequence
+
+if TYPE_CHECKING:
+    from .nodes import Node
 
 
 class DagNode(ABC):
@@ -88,7 +91,7 @@ class DagNode(ABC):
 class DagEdge(NamedTuple):
     downstream_node: "KwargReprNode"
     downstream_label: str
-    upstream_node: str
+    upstream_node: "Node"
     upstream_label: str
     upstream_selector: str
 
@@ -109,8 +112,8 @@ def get_incoming_edges(downstream_node: "KwargReprNode", incoming_edge_map):
     return edges
 
 
-def get_outgoing_edges(upstream_node, outgoing_edge_map):
-    edges = []
+def get_outgoing_edges(upstream_node, outgoing_edge_map) -> List[DagEdge]:
+    edges: List[DagEdge] = []
     for upstream_label, downstream_infos in sorted(outgoing_edge_map.items()):
         for downstream_info in downstream_infos:
             downstream_node, downstream_label, downstream_selector = downstream_info
@@ -159,12 +162,12 @@ class KwargReprNode(DagNode):
         incoming_edge_map,
         name: str,
         args: Optional[Sequence[Any]] = None,
-        kwargs: Optional[Dict[Any, Any]] = None,
+        kwargs: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.__incoming_edge_map = incoming_edge_map
         self.name: str = name
         self.args: Sequence[Any] = list() if args is None else args
-        self.kwargs: Dict[Any, Any] = dict() if kwargs is None else kwargs
+        self.kwargs: Dict[str, Any] = dict() if kwargs is None else kwargs
         self.__hash = self.__get_hash()
 
     def __hash__(self) -> int:

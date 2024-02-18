@@ -1,9 +1,8 @@
-from __future__ import unicode_literals
-
-from builtins import str
-from .dag import get_outgoing_edges
-from ._run import topo_sort
+from __future__ import annotations
 import tempfile
+
+from .dag import get_outgoing_edges
+from ._output import topo_sort
 
 from ffmpeg.nodes import (
     FilterNode,

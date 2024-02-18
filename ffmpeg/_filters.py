@@ -1,11 +1,27 @@
-from __future__ import unicode_literals
+from __future__ import annotations
+from typing import Any, AnyStr, List, Optional, Sequence, Union
 
-from .nodes import FilterNode, filter_operator
+from .nodes import (
+    FilterNode,
+    FilterableStream,
+    OutputNode,
+    OutputStream,
+    StreamDictType,
+    filter_operator,
+)
 from ._utils import escape_chars
 
 
+StreamSpecType = Optional[Union[FilterableStream, Sequence[FilterableStream], StreamDictType]]
+
+
 @filter_operator()
-def filter_multi_output(stream_spec, filter_name, *args, **kwargs):
+def filter_multi_output(
+    stream_spec: StreamSpecType,
+    filter_name: str,
+    *args,
+    **kwargs,
+):
     """Apply custom filter with one or more outputs.
 
     This is the same as ``filter`` except that the filter can produce more than one
@@ -27,7 +43,12 @@ def filter_multi_output(stream_spec, filter_name, *args, **kwargs):
 
 
 @filter_operator()
-def filter(stream_spec, filter_name, *args, **kwargs):
+def filter(
+    stream_spec: StreamSpecType,
+    filter_name: str,
+    *args,
+    **kwargs,
+):
     """Apply custom filter.
 
     ``filter_`` is normally used by higher-level filter functions such as ``hflip``,
@@ -52,7 +73,12 @@ def filter(stream_spec, filter_name, *args, **kwargs):
 
 
 @filter_operator()
-def filter_(stream_spec, filter_name, *args, **kwargs):
+def filter_(
+    stream_spec: StreamSpecType,
+    filter_name: str,
+    *args,
+    **kwargs,
+):
     """Alternate name for ``filter``, so as to not collide with the
     built-in python ``filter`` operator.
     """
@@ -60,17 +86,17 @@ def filter_(stream_spec, filter_name, *args, **kwargs):
 
 
 @filter_operator()
-def split(stream):
+def split(stream: StreamSpecType):
     return FilterNode(stream, split.__name__)
 
 
 @filter_operator()
-def asplit(stream):
+def asplit(stream: StreamSpecType):
     return FilterNode(stream, asplit.__name__)
 
 
 @filter_operator()
-def setpts(stream, expr):
+def setpts(stream: StreamSpecType, expr):
     """Change the PTS (presentation timestamp) of the input frames.
 
     Args:
@@ -83,7 +109,7 @@ def setpts(stream, expr):
 
 
 @filter_operator()
-def trim(stream, **kwargs):
+def trim(stream: StreamSpecType, **kwargs):
     """Trim the input so that the output contains one continuous subpart of the input.
 
     Args:
@@ -106,7 +132,12 @@ def trim(stream, **kwargs):
 
 
 @filter_operator()
-def overlay(main_parent_node, overlay_parent_node, eof_action="repeat", **kwargs):
+def overlay(
+    main_parent_node: FilterableStream,
+    overlay_parent_node: FilterableStream,
+    eof_action="repeat",
+    **kwargs,
+):
     """Overlay one video on top of another.
 
     Args:
@@ -164,7 +195,7 @@ def overlay(main_parent_node, overlay_parent_node, eof_action="repeat", **kwargs
 
 
 @filter_operator()
-def hflip(stream):
+def hflip(stream: StreamSpecType):
     """Flip the input video horizontally.
 
     Official documentation: `hflip <https://ffmpeg.org/ffmpeg-filters.html#hflip>`__
@@ -173,7 +204,7 @@ def hflip(stream):
 
 
 @filter_operator()
-def vflip(stream):
+def vflip(stream: StreamSpecType):
     """Flip the input video vertically.
 
     Official documentation: `vflip <https://ffmpeg.org/ffmpeg-filters.html#vflip>`__
@@ -182,7 +213,7 @@ def vflip(stream):
 
 
 @filter_operator()
-def crop(stream, x, y, width, height, **kwargs):
+def crop(stream: StreamSpecType, x, y, width, height, **kwargs):
     """Crop the input video.
 
     Args:
@@ -199,7 +230,7 @@ def crop(stream, x, y, width, height, **kwargs):
 
 
 @filter_operator()
-def drawbox(stream, x, y, width, height, color, thickness=None, **kwargs):
+def drawbox(stream: StreamSpecType, x, y, width, height, color, thickness=None, **kwargs):
     """Draw a colored box on the input image.
 
     Args:
@@ -230,7 +261,7 @@ def drawbox(stream, x, y, width, height, color, thickness=None, **kwargs):
 
 
 @filter_operator()
-def drawtext(stream, text=None, x=0, y=0, escape_text=True, **kwargs):
+def drawtext(stream: StreamSpecType, text=None, x=0, y=0, escape_text=True, **kwargs):
     """Draw a text string or text from a specified file on top of a video, using the
     libfreetype library.
 
@@ -397,7 +428,7 @@ def drawtext(stream, text=None, x=0, y=0, escape_text=True, **kwargs):
 
 
 @filter_operator()
-def concat(*streams, **kwargs):
+def concat(*streams: FilterableStream, **kwargs):
     """Concatenate audio and video streams, joining them together one after the other.
 
     The filter works on segments of synchronized video and audio streams. All segments
@@ -439,7 +470,7 @@ def concat(*streams, **kwargs):
 
 
 @filter_operator()
-def zoompan(stream, **kwargs):
+def zoompan(stream: StreamSpecType, **kwargs):
     """Apply Zoom & Pan effect.
 
     Args:
@@ -458,7 +489,7 @@ def zoompan(stream, **kwargs):
 
 
 @filter_operator()
-def hue(stream, **kwargs):
+def hue(stream: StreamSpecType, **kwargs):
     """Modify the hue and/or the saturation of the input.
 
     Args:
@@ -477,7 +508,7 @@ def hue(stream, **kwargs):
 
 
 @filter_operator()
-def colorchannelmixer(stream, *args, **kwargs):
+def colorchannelmixer(stream: StreamSpecType, *args, **kwargs) -> FilterableStream:
     """Adjust video input frames by re-mixing color channels.
 
     Official documentation: `colorchannelmixer <https://ffmpeg.org/ffmpeg-filters.html#colorchannelmixer>`__
@@ -485,20 +516,84 @@ def colorchannelmixer(stream, *args, **kwargs):
     return FilterNode(stream, colorchannelmixer.__name__, kwargs=kwargs).stream()
 
 
+@filter_operator()
+def output(*streams_and_filename: Union[FilterableStream, AnyStr], **kwargs: Any) -> OutputStream:
+    """Output file URL
+
+    Syntax:
+        `ffmpeg.output(stream1[, stream2, stream3...], filename, **ffmpeg_args)`
+
+    Any supplied keyword arguments are passed to ffmpeg verbatim (e.g.
+    ``t=20``, ``f='mp4'``, ``acodec='pcm'``, ``vcodec='rawvideo'``,
+    etc.).  Some keyword-arguments are handled specially, as shown below.
+
+    Args:
+        video_bitrate: parameter for ``-b:v``, e.g. ``video_bitrate=1000``.
+        audio_bitrate: parameter for ``-b:a``, e.g. ``audio_bitrate=200``.
+        format: alias for ``-f`` parameter, e.g. ``format='mp4'``
+            (equivalent to ``f='mp4'``).
+
+    If multiple streams are provided, they are mapped to the same
+    output.
+
+    To tell ffmpeg to write to stdout, use ``pipe:`` as the filename.
+
+    Official documentation: `Synopsis <https://ffmpeg.org/ffmpeg.html#Synopsis>`__
+    """
+    _streams_and_filename = list(streams_and_filename)
+    if "filename" not in kwargs:
+        if not isinstance(_streams_and_filename[-1], (str, bytes)):
+            raise ValueError("A filename must be provided")
+        kwargs["filename"] = _streams_and_filename.pop(-1)
+
+    streams: List[FilterableStream] = _streams_and_filename  # type: ignore
+
+    fmt = kwargs.pop("f", None)
+    if fmt:
+        if "format" in kwargs:
+            raise ValueError("Can't specify both `format` and `f` kwargs")
+        kwargs["format"] = fmt
+    return OutputNode(streams, output.__name__, kwargs=kwargs).stream()
+
+
+class FilterOperators:
+    filter_multi_output = filter_multi_output
+    filter = filter
+    filter_ = filter_
+    split = split
+    asplit = asplit
+    setpts = setpts
+    trim = trim
+    overlay = overlay
+    hflip = hflip
+    vflip = vflip
+    crop = crop
+    drawbox = drawbox
+    drawtext = drawtext
+    concat = concat
+    zoompan = zoompan
+    hue = hue
+    colorchannelmixer = colorchannelmixer
+    output = output
+
+
 __all__ = [
-    "colorchannelmixer",
-    "concat",
+    "filter_multi_output",
+    "filter",
+    "filter_",
+    "split",
+    "asplit",
+    "setpts",
+    "trim",
+    "overlay",
+    "hflip",
+    "vflip",
     "crop",
     "drawbox",
     "drawtext",
-    "filter",
-    "filter_",
-    "filter_multi_output",
-    "hflip",
-    "hue",
-    "overlay",
-    "setpts",
-    "trim",
-    "vflip",
+    "concat",
     "zoompan",
+    "hue",
+    "colorchannelmixer",
+    "output",
 ]

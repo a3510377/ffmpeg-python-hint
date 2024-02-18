@@ -1,22 +1,44 @@
-from __future__ import unicode_literals
+from __future__ import annotations
+import os
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
-from typing import Any, AnyStr, TypeVar, Callable, Dict, List, Optional, Set, Type, Union, Sequence, Generic
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    TypeVar,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Set,
+    Type,
+    Union,
+    Sequence,
+    Generic,
+)
 
-# from past.builtins import basestring
+
+if TYPE_CHECKING:
+    from ._filters import FilterOperators
+    from ._output import OutputOperators
+else:
+
+    class FilterOperators: ...
+
+    class OutputOperators: ...
+
+
 from .dag import KwargReprNode
 from ._utils import escape_chars, get_hash_int
-from builtins import object
-import os
 
 
 _CT = TypeVar("_CT", bound=Callable)
 # outgoing_stream_type
 _OST = TypeVar("_OST", bound="OverloadStream")
-StreamDictType = Dict[Any, "Stream"]
+StreamDictType = Dict[Optional[Union[str, int]], "OverloadStream"]
 
 
-def _is_of_types(obj: object, types: Set[Type[Any]]) -> bool:
+def _is_of_types(obj: Any, types: Set[Type[Any]]) -> bool:
     valid = False
     for stream_type in types:
         if isinstance(obj, stream_type):
@@ -144,10 +166,12 @@ class OverloadStream(Stream[_OST], ABC):
         raise NotImplementedError
 
 
-def get_stream_map(stream_spec: Optional[Union[Stream, Sequence[Stream], StreamDictType]]) -> StreamDictType:
+def get_stream_map(
+    stream_spec: Optional[Union[OverloadStream, Sequence[OverloadStream], StreamDictType]]
+) -> StreamDictType:
     if stream_spec is None:
         return {}
-    elif isinstance(stream_spec, Stream):
+    elif isinstance(stream_spec, OverloadStream):
         return {None: stream_spec}
     elif isinstance(stream_spec, dict):
         return stream_spec
@@ -167,7 +191,7 @@ def get_stream_map_nodes(stream_map: StreamDictType) -> List["Node"]:
 
 
 def get_stream_spec_nodes(
-    stream_spec: Optional[Union[Stream, Sequence[Stream], StreamDictType]]
+    stream_spec: Optional[Union[OverloadStream, Sequence[OverloadStream], StreamDictType]]
 ) -> List["Node"]:
     stream_map = get_stream_map(stream_spec)
     return get_stream_map_nodes(stream_map)
@@ -210,14 +234,14 @@ class Node(KwargReprNode, Generic[_OST]):
 
     def __init__(
         self,
-        stream_spec: Optional[Union[Stream, Sequence[Stream], StreamDictType]],
+        stream_spec: Optional[Union[OverloadStream, Sequence[OverloadStream], StreamDictType]],
         name: str,
         incoming_stream_types: Set[Type[OverloadStream]],
         outgoing_stream_type: Type[_OST],
         min_inputs: Optional[int] = None,
         max_inputs: Optional[int] = None,
         args: Optional[Sequence[str]] = None,
-        kwargs: Optional[Dict[Any, Any]] = None,
+        kwargs: Optional[Dict[str, Any]] = None,
     ) -> None:
         stream_map = get_stream_map(stream_spec)
         self.__check_input_len(stream_map, min_inputs, max_inputs)
@@ -255,7 +279,7 @@ class Node(KwargReprNode, Generic[_OST]):
             return self.stream(label=item)
 
 
-class FilterableStream(OverloadStream[_OST]):
+class FilterableStream(FilterOperators, OverloadStream["FilterableStream"]):
     def __init__(self, upstream_node, upstream_label, upstream_selector=None):
         super(FilterableStream, self).__init__(
             upstream_node,
@@ -268,10 +292,15 @@ class FilterableStream(OverloadStream[_OST]):
 
 
 # noinspection PyMethodOverriding
-class InputNode(Node["FilterableStream[InputNode]"]):
+class InputNode(Node["FilterableStream"]):
     """InputNode type"""
 
-    def __init__(self, name: str, args: Sequence[str] = [], kwargs: Dict[Any, Any] = {}):
+    def __init__(
+        self,
+        name: str,
+        args: Optional[Sequence[str]] = None,
+        kwargs: Optional[Dict[str, Any]] = None,
+    ):
         super(InputNode, self).__init__(
             stream_spec=None,
             name=name,
@@ -289,14 +318,16 @@ class InputNode(Node["FilterableStream[InputNode]"]):
 
 
 # noinspection PyMethodOverriding
-class FilterNode(Node["FilterableStream[FilterNode]"]):
+class FilterNode(Node["FilterableStream"]):
+    """FilterNode"""
+
     def __init__(
         self,
-        stream_spec,
-        name,
+        stream_spec: Optional[Union[FilterableStream, Sequence[FilterableStream], StreamDictType]],
+        name: str,
         max_inputs: Optional[int] = 1,
         args: Optional[Sequence[str]] = None,
-        kwargs: Optional[Dict[Any, Any]] = None,
+        kwargs: Optional[Dict[str, Any]] = None,
     ):
         super(FilterNode, self).__init__(
             stream_spec=stream_spec,
@@ -308,8 +339,6 @@ class FilterNode(Node["FilterableStream[FilterNode]"]):
             args=args,
             kwargs=kwargs,
         )
-
-    """FilterNode"""
 
     def _get_filter(self, outgoing_edges):
         args = self.args
@@ -336,8 +365,14 @@ class FilterNode(Node["FilterableStream[FilterNode]"]):
 
 
 # noinspection PyMethodOverriding
-class OutputNode(Node["OutputStream[OutputNode]"]):
-    def __init__(self, stream: Union[Stream, Sequence[Stream], StreamDictType], name, args=[], kwargs={}):
+class OutputNode(Node["OutputStream"]):
+    def __init__(
+        self,
+        stream: Union[FilterableStream, Sequence[FilterableStream], StreamDictType],
+        name: str,
+        args: Optional[Sequence[Any]] = None,
+        kwargs: Optional[Dict[str, Any]] = None,
+    ) -> None:
         super(OutputNode, self).__init__(
             stream_spec=stream,
             name=name,
@@ -354,8 +389,8 @@ class OutputNode(Node["OutputStream[OutputNode]"]):
         return os.path.basename(self.kwargs["filename"])
 
 
-class OutputStream(OverloadStream[_OST]):
-    def __init__(self, upstream_node, upstream_label, upstream_selector=None):
+class OutputStream(OutputOperators, OverloadStream):
+    def __init__(self, upstream_node: Node, upstream_label, upstream_selector=None):
         super(OutputStream, self).__init__(
             upstream_node,
             upstream_label,
@@ -368,7 +403,11 @@ class OutputStream(OverloadStream[_OST]):
 
 # noinspection PyMethodOverriding
 class MergeOutputsNode(Node["OutputStream"]):
-    def __init__(self, streams, name):
+    def __init__(
+        self,
+        streams: Optional[Union[OverloadStream, Sequence[OverloadStream], StreamDictType]],
+        name: str,
+    ) -> None:
         super(MergeOutputsNode, self).__init__(
             stream_spec=streams,
             name=name,
@@ -381,7 +420,13 @@ class MergeOutputsNode(Node["OutputStream"]):
 
 # noinspection PyMethodOverriding
 class GlobalNode(Node["OutputStream"]):
-    def __init__(self, stream, name, args: Sequence[str] = [], kwargs: Dict[AnyStr, Any] = {}):
+    def __init__(
+        self,
+        stream,
+        name,
+        args: Optional[Sequence[str]] = None,
+        kwargs: Optional[Dict[str, Any]] = None,
+    ) -> None:
         super(GlobalNode, self).__init__(
             stream_spec=stream,
             name=name,

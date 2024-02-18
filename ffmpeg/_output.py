@@ -1,15 +1,17 @@
-from __future__ import unicode_literals
+from __future__ import annotations
+from typing import AnyStr, Dict, List, Optional, Tuple
 from .dag import DagEdge, get_outgoing_edges, topo_sort
 from ._utils import convert_kwargs_to_cmd_line_args
-from builtins import str
 from functools import reduce
 import copy
 import operator
 import subprocess
 
-from ._ffmpeg import input, output
+from ._ffmpeg import input
+from ._filters import output
 from .nodes import (
-    StreamDictType,
+    MergeOutputsNode,
+    OutputStream,
     get_stream_spec_nodes,
     FilterNode,
     GlobalNode,
@@ -18,7 +20,7 @@ from .nodes import (
     output_operator,
 )
 
-from collections.abc import Iterable
+from collections.abc import Sequence
 
 
 class Error(Exception):
@@ -28,48 +30,58 @@ class Error(Exception):
         self.stderr = stderr
 
 
-def _get_input_args(input_node):
+def _get_input_args(input_node: InputNode) -> List[str]:
     if input_node.name == input.__name__:
         kwargs = copy.copy(input_node.kwargs)
         filename = kwargs.pop("filename")
         fmt = kwargs.pop("format", None)
         video_size = kwargs.pop("video_size", None)
-        args = []
+        args: List[str] = []
+
         if fmt:
             args += ["-f", fmt]
         if video_size:
             args += ["-video_size", "{}x{}".format(video_size[0], video_size[1])]
+
         args += convert_kwargs_to_cmd_line_args(kwargs)
         args += ["-i", filename]
-    else:
-        raise ValueError("Unsupported input node: {}".format(input_node))
-    return args
+
+        return args
+    raise ValueError(f"Unsupported input node: {input_node}")
 
 
-def _format_input_stream_name(stream_name_map: StreamDictType, edge: DagEdge, is_final_arg=False):
-    prefix = stream_name_map[edge.upstream_node, edge.upstream_label]
+def _format_input_stream_name(
+    stream_name_map: Dict[Tuple[InputNode, Optional[str]], str],
+    edge: DagEdge,
+    is_final_arg: bool = False,
+) -> str:
+    prefix = stream_name_map[edge.upstream_node, edge.upstream_label]  # type: ignore
     if not edge.upstream_selector:
         suffix = ""
     else:
-        suffix = ":{}".format(edge.upstream_selector)
+        suffix = f":{edge.upstream_selector}"
+
     if is_final_arg and isinstance(edge.upstream_node, InputNode):
         # Special case: `-map` args should not have brackets for input nodes.
-        fmt = "{}{}"
+        return f"{prefix}{suffix}"
     else:
-        fmt = "[{}{}]"
-    return fmt.format(prefix, suffix)
+        return f"[{prefix}{suffix}]"
 
 
-def _format_output_stream_name(stream_name_map, edge):
-    return "[{}]".format(stream_name_map[edge.upstream_node, edge.upstream_label])
+def _format_output_stream_name(stream_name_map: Dict[Tuple[InputNode, Optional[str]], str], edge: DagEdge):
+    return f"[{stream_name_map[edge.upstream_node, edge.upstream_label]}]"  # type: ignore
 
 
-def _get_filter_spec(node, outgoing_edge_map, stream_name_map):
+def _get_filter_spec(
+    node: FilterNode,
+    outgoing_edge_map,
+    stream_name_map: Dict[Tuple[InputNode, Optional[str]], str],
+):
     incoming_edges = node.incoming_edges
     outgoing_edges = get_outgoing_edges(node, outgoing_edge_map)
     inputs = [_format_input_stream_name(stream_name_map, edge) for edge in incoming_edges]
     outputs = [_format_output_stream_name(stream_name_map, edge) for edge in outgoing_edges]
-    filter_spec = "{}{}{}".format("".join(inputs), node._get_filter(outgoing_edges), "".join(outputs))
+    filter_spec = "".join(inputs) + node._get_filter(outgoing_edges) + "".join(outputs)
     return filter_spec
 
 
@@ -88,7 +100,7 @@ def _allocate_filter_stream_names(filter_nodes, outgoing_edge_maps, stream_name_
             stream_count += 1
 
 
-def _get_filter_arg(filter_nodes, outgoing_edge_maps, stream_name_map):
+def _get_filter_arg(filter_nodes, outgoing_edge_maps, stream_name_map) -> str:
     _allocate_filter_stream_names(filter_nodes, outgoing_edge_maps, stream_name_map)
     filter_specs = [
         _get_filter_spec(node, outgoing_edge_maps[node], stream_name_map) for node in filter_nodes
@@ -96,15 +108,18 @@ def _get_filter_arg(filter_nodes, outgoing_edge_maps, stream_name_map):
     return ";".join(filter_specs)
 
 
-def _get_global_args(node):
+def _get_global_args(node: GlobalNode) -> List[str]:
     return list(node.args)
 
 
-def _get_output_args(node, stream_name_map):
+def _get_output_args(
+    node: OutputNode,
+    stream_name_map: Dict[Tuple[InputNode, Optional[str]], str],
+) -> List[str]:
     if node.name != output.__name__:
         raise ValueError("Unsupported output node: {}".format(node))
-    args = []
 
+    args: List[str] = []
     if len(node.incoming_edges) == 0:
         raise ValueError("Output node {} has no mapped streams".format(node))
 
@@ -124,31 +139,45 @@ def _get_output_args(node, stream_name_map):
         args += ["-b:a", str(kwargs.pop("audio_bitrate"))]
     if "video_size" in kwargs:
         video_size = kwargs.pop("video_size")
-        if not isinstance(video_size, (str, bytes)) and isinstance(video_size, Iterable):
+        if not isinstance(video_size, (str, bytes)) and isinstance(video_size, Sequence):
             video_size = "{}x{}".format(video_size[0], video_size[1])
         args += ["-video_size", video_size]
     args += convert_kwargs_to_cmd_line_args(kwargs)
     args += [filename]
+
     return args
 
 
 @output_operator()
-def get_args(stream_spec, overwrite_output=False):
+def get_args(stream_spec: OutputStream, overwrite_output=False) -> List[str]:
     """Build command-line arguments to be passed to ffmpeg."""
     nodes = get_stream_spec_nodes(stream_spec)
-    args = []
+    args: List[str] = []
     # TODO: group nodes together, e.g. `-i somefile -r somerate`.
     sorted_nodes, outgoing_edge_maps = topo_sort(nodes)
-    input_nodes = [node for node in sorted_nodes if isinstance(node, InputNode)]
-    output_nodes = [node for node in sorted_nodes if isinstance(node, OutputNode)]
-    global_nodes = [node for node in sorted_nodes if isinstance(node, GlobalNode)]
-    filter_nodes = [node for node in sorted_nodes if isinstance(node, FilterNode)]
+    input_nodes: List[InputNode] = []
+    output_nodes: List[OutputNode] = []
+    global_nodes: List[GlobalNode] = []
+    filter_nodes: List[FilterNode] = []
+    for node in sorted_nodes:
+        if isinstance(node, InputNode):
+            input_nodes.append(node)
+        elif isinstance(node, OutputNode):
+            output_nodes.append(node)
+        elif isinstance(node, GlobalNode):
+            global_nodes.append(node)
+        elif isinstance(node, FilterNode):
+            filter_nodes.append(node)
+
     stream_name_map = {(node, None): str(i) for i, node in enumerate(input_nodes)}
     filter_arg = _get_filter_arg(filter_nodes, outgoing_edge_maps, stream_name_map)
     args += reduce(operator.add, [_get_input_args(node) for node in input_nodes])
     if filter_arg:
         args += ["-filter_complex", filter_arg]
-    args += reduce(operator.add, [_get_output_args(node, stream_name_map) for node in output_nodes])
+    args += reduce(
+        operator.add,
+        [_get_output_args(node, stream_name_map) for node in output_nodes],  # type: ignore
+    )
     args += reduce(operator.add, [_get_global_args(node) for node in global_nodes], [])
     if overwrite_output:
         args += ["-y"]
@@ -156,7 +185,7 @@ def get_args(stream_spec, overwrite_output=False):
 
 
 @output_operator()
-def compile(stream_spec, cmd="ffmpeg", overwrite_output=False):
+def compile(stream_spec: OutputStream, cmd="ffmpeg", overwrite_output=False) -> List[str]:
     """Build command-line for invoking ffmpeg.
 
     The :meth:`run` function uses this to build the command line
@@ -176,13 +205,13 @@ def compile(stream_spec, cmd="ffmpeg", overwrite_output=False):
 
 @output_operator()
 def run_async(
-    stream_spec,
+    stream_spec: OutputStream,
     cmd="ffmpeg",
-    pipe_stdin=False,
-    pipe_stdout=False,
-    pipe_stderr=False,
-    quiet=False,
-    overwrite_output=False,
+    pipe_stdin: bool = False,
+    pipe_stdout: bool = False,
+    pipe_stderr: bool = False,
+    quiet: bool = False,
+    overwrite_output: bool = False,
     cwd=None,
 ):
     """Asynchronously invoke ffmpeg for the supplied node graph.
@@ -280,13 +309,13 @@ def run_async(
 
 @output_operator()
 def run(
-    stream_spec,
+    stream_spec: OutputStream,
     cmd="ffmpeg",
-    capture_stdout=False,
-    capture_stderr=False,
-    input=None,
-    quiet=False,
-    overwrite_output=False,
+    capture_stdout: bool = False,
+    capture_stderr: bool = False,
+    input: Optional[AnyStr] = None,
+    quiet: bool = False,
+    overwrite_output: bool = False,
     cwd=None,
 ):
     """Invoke ffmpeg for the supplied node graph.
@@ -313,17 +342,51 @@ def run(
         overwrite_output=overwrite_output,
         cwd=cwd,
     )
-    out, err = process.communicate(input)
+    out, err = process.communicate(input.encode() if isinstance(input, str) else input)
     retcode = process.poll()
     if retcode:
         raise Error("ffmpeg", out, err)
     return out, err
 
 
+@output_operator()
+def global_args(stream: OutputStream, *args) -> OutputStream:
+    """Add extra global command-line argument(s), e.g. ``-progress``."""
+    return GlobalNode(stream, global_args.__name__, args).stream()
+
+
+@output_operator()
+def overwrite_output(stream: OutputStream) -> OutputStream:
+    """Overwrite output files without asking (ffmpeg ``-y`` option)
+
+    Official documentation: `Main options <https://ffmpeg.org/ffmpeg.html#Main-options>`__
+    """
+    return GlobalNode(stream, overwrite_output.__name__, ["-y"]).stream()
+
+
+@output_operator()
+def merge_outputs(*streams: OutputStream) -> OutputStream:
+    """Include all given outputs in one ffmpeg command line"""
+    return MergeOutputsNode(streams, merge_outputs.__name__).stream()
+
+
+class OutputOperators:
+    get_args = get_args
+    compile = compile
+    run_async = run_async
+    run = run
+    global_args = global_args
+    overwrite_output = overwrite_output
+    merge_outputs = merge_outputs
+
+
 __all__ = [
-    "compile",
     "Error",
     "get_args",
-    "run",
+    "compile",
     "run_async",
+    "run",
+    "global_args",
+    "overwrite_output",
+    "merge_outputs",
 ]
